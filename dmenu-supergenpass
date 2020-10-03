@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# Author: mnzaki on arch forums (bbs.archlinux.com)
+#         and on the gmail servers
+# The Author can not be held liable for any data loss that may be a direct or
+# indirect consequence of using this piece of software.
+
+# Can be used as "dmenu-supergenpass gmail.com"
+# Or call it with no argument to let you enter the item or choose from a list
+# The currently selected text (from X primary selection) will be the first choice.
+# In both cases you will next be prompted for the master password
+# The password will be generated and sent to the active window
+#
+# Note that the original supergenpass uses 'items' that are the domain + TLD of
+# the website. This includes something.edu.eg for example. You can of course use
+# this for anything besides websites, with any arbitrary item.
+#
+# If you need to remove items, remove them from .config/dmenu-supergenpass/items
+
+# stealth salt: gets added to the password before hashing
+salt=""
+# to comply with supergenpass.com pass_len should be between 4 and 24
+pass_len=20
+
+dmenu_cmd="dmenu $DMENU_OPTIONS"
+dmenu_pass="dmenu -nf #204a87 -nb #204a87 -sf black -sb #babdb6"
+
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dmenu-supergenpass"
+cache="$config_dir/items"
+mkdir -p "$config_dir"
+touch "$cache"
+
+item="$1"
+IFS=" "
+sel=$(xsel -p)
+choices=$(cat "$cache" | grep -vx "$sel")
+[[ $sel != "" ]] && choices="$sel\n$choices"
+if [[ "$item" = "" ]]; then
+    item=$(echo -e "$choices" | $dmenu_cmd -p "Password Item: ") || exit
+fi
+
+echo "$item" > "$cache.$$"
+grep -vx "$item" "$cache" >> "$cache.$$"
+mv "$cache.$$" "$cache"
+
+master=$(echo | $dmenu_pass -p "Master Password: ") || exit
+
+pass="$(echo -n "$master$salt:$item" |
+    perl -MDigest::MD5\(md5_base64\) -pwe \
+    '$p=$_;for($i=0;$i<10 || !($p=~/^[a-z]/) || !($p=~/.[A-Z]/) || !($p=~/.[0-9]/); $i++)
+        { $_ = md5_base64($_)."AA"; $_ =~ tr/+\//98/;$p=substr $_,0,'$pass_len';}$_=$p';)"
+
+xdotool type "$pass"
